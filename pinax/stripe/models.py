@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 
 import decimal
 
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -19,7 +20,6 @@ from .utils import CURRENCY_SYMBOLS
 
 
 class StripeObject(models.Model):
-
     stripe_id = models.CharField(max_length=191, unique=True)
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -28,7 +28,6 @@ class StripeObject(models.Model):
 
 
 class AccountRelatedStripeObjectMixin(models.Model):
-
     stripe_account = models.ForeignKey(
         "pinax_stripe.Account",
         on_delete=models.CASCADE,
@@ -40,6 +39,7 @@ class AccountRelatedStripeObjectMixin(models.Model):
     @property
     def stripe_account_stripe_id(self):
         return getattr(self.stripe_account, "stripe_id", None)
+
     stripe_account_stripe_id.fget.short_description = "Stripe Account"
 
     class Meta:
@@ -71,6 +71,7 @@ class StripeAccountFromCustomerMixin(object):
     @property
     def stripe_account_stripe_id(self):
         return self.stripe_account.stripe_id if self.stripe_account else None
+
     stripe_account_stripe_id.fget.short_description = "Stripe Account"
 
 
@@ -88,29 +89,36 @@ class Plan(UniquePerAccountStripeObject):
     def __str__(self):
         return "{} ({}{})".format(self.name, CURRENCY_SYMBOLS.get(self.currency, ""), self.amount)
 
-    def __repr__(self):
-        return "Plan(pk={!r}, name={!r}, amount={!r}, currency={!r}, interval={!r}, interval_count={!r}, trial_period_days={!r}, stripe_id={!r})".format(
-            self.pk,
-            self.name,
-            self.amount,
-            self.currency,
-            self.interval,
-            self.interval_count,
-            self.trial_period_days,
-            self.stripe_id,
-        )
+        # def __repr__(self):
+        #     return "Plan(pk={!r}, name={!r}, amount={!r}, currency={!r}, interval={!r}, interval_count={!r}, trial_period_days={!r}, stripe_id={!r})".format(
+        #         self.pk,
+        #         self.name,
+        #         self.amount,
+        #         self.currency,
+        #         self.interval,
+        #         self.interval_count,
+        #         self.trial_period_days,
+        #         self.stripe_id,
+        #     )
+        #
+        # @property
+        # def stripe_plan(self):
+        #     return stripe.Plan.retrieve(
+        #         self.stripe_id,
+        #         stripe_account=self.stripe_account_stripe_id,
+        #     )
 
-    @property
-    def stripe_plan(self):
-        return stripe.Plan.retrieve(
-            self.stripe_id,
-            stripe_account=self.stripe_account_stripe_id,
-        )
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Plan, self).delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Plan, self).save(*args, **kwargs)
 
 
 @python_2_unicode_compatible
 class Coupon(StripeObject):
-
     amount_off = models.DecimalField(decimal_places=2, max_digits=9, null=True, blank=True)
     currency = models.CharField(max_length=10, default="usd")
     duration = models.CharField(max_length=10, default="once")
@@ -125,7 +133,7 @@ class Coupon(StripeObject):
 
     def __str__(self):
         if self.amount_off is None:
-            description = "{}% off".format(self.percent_off,)
+            description = "{}% off".format(self.percent_off, )
         else:
             description = "{}{}".format(CURRENCY_SYMBOLS.get(self.currency, ""), self.amount_off)
 
@@ -134,7 +142,6 @@ class Coupon(StripeObject):
 
 @python_2_unicode_compatible
 class EventProcessingException(models.Model):
-
     event = models.ForeignKey("Event", null=True, blank=True, on_delete=models.CASCADE)
     data = models.TextField()
     message = models.CharField(max_length=500)
@@ -147,7 +154,6 @@ class EventProcessingException(models.Model):
 
 @python_2_unicode_compatible
 class Event(AccountRelatedStripeObject):
-
     kind = models.CharField(max_length=250)
     livemode = models.BooleanField(default=False)
     customer = models.ForeignKey("Customer", null=True, blank=True, on_delete=models.CASCADE)
@@ -178,7 +184,6 @@ class Event(AccountRelatedStripeObject):
 
 
 class Transfer(AccountRelatedStripeObject):
-
     amount = models.DecimalField(decimal_places=2, max_digits=9)
     amount_reversed = models.DecimalField(decimal_places=2, max_digits=9, null=True, blank=True)
     application_fee = models.DecimalField(decimal_places=2, max_digits=9, null=True, blank=True)
@@ -216,7 +221,6 @@ class Transfer(AccountRelatedStripeObject):
 
 
 class TransferChargeFee(models.Model):
-
     transfer = models.ForeignKey(Transfer, related_name="charge_fee_details", on_delete=models.CASCADE)
     amount = models.DecimalField(decimal_places=2, max_digits=9)
     currency = models.CharField(max_length=10, default="usd")
@@ -253,12 +257,12 @@ class UserAccount(models.Model):
         return super(UserAccount, self).save(*args, **kwargs)
 
     def __repr__(self):
-        return "UserAccount(pk={self.pk!r}, user={self.user!r}, account={self.account!r}, customer={self.customer!r})".format(self=self)
+        return "UserAccount(pk={self.pk!r}, user={self.user!r}, account={self.account!r}, customer={self.customer!r})".format(
+            self=self)
 
 
 @python_2_unicode_compatible
 class Customer(AccountRelatedStripeObject):
-
     user = models.OneToOneField(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE)
     users = models.ManyToManyField(settings.AUTH_USER_MODEL, through=UserAccount,
                                    related_name="customers",
@@ -278,35 +282,42 @@ class Customer(AccountRelatedStripeObject):
             stripe_account=self.stripe_account_stripe_id,
         )
 
-    def __str__(self):
-        if self.user:
-            return str(self.user)
-        elif self.id:
-            users = self.users.all()
-            if users:
-                return ", ".join(str(user) for user in users)
-        if self.stripe_id:
-            return "No User(s) ({})".format(self.stripe_id)
-        return "No User(s)"
+        # def __str__(self):
+        #     if self.user:
+        #         return str(self.user)
+        #     elif self.id:
+        #         users = self.users.all()
+        #         if users:
+        #             return ", ".join(str(user) for user in users)
+        #     if self.stripe_id:
+        #         return "No User(s) ({})".format(self.stripe_id)
+        #     return "No User(s)"
+        #
+        # def __repr__(self):
+        #     if self.user:
+        #         return "Customer(pk={!r}, user={!r}, stripe_id={!r})".format(
+        #             self.pk,
+        #             self.user,
+        #             self.stripe_id,
+        #         )
+        #     elif self.id:
+        #         return "Customer(pk={!r}, users={}, stripe_id={!r})".format(
+        #             self.pk,
+        #             ", ".join(repr(user) for user in self.users.all()),
+        #             self.stripe_id,
+        #         )
+        #     return "Customer(pk={!r}, stripe_id={!r})".format(self.pk, self.stripe_id)
 
-    def __repr__(self):
-        if self.user:
-            return "Customer(pk={!r}, user={!r}, stripe_id={!r})".format(
-                self.pk,
-                self.user,
-                self.stripe_id,
-            )
-        elif self.id:
-            return "Customer(pk={!r}, users={}, stripe_id={!r})".format(
-                self.pk,
-                ", ".join(repr(user) for user in self.users.all()),
-                self.stripe_id,
-            )
-        return "Customer(pk={!r}, stripe_id={!r})".format(self.pk, self.stripe_id)
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Customer, self).delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Customer, self).save(*args, **kwargs)
 
 
 class Card(StripeObject):
-
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     name = models.TextField(blank=True)
     address_line_1 = models.TextField(blank=True)
@@ -334,9 +345,16 @@ class Card(StripeObject):
             getattr(self, "customer", None),
         )
 
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Card, self).delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Card, self).save(*args, **kwargs)
+
 
 class BitcoinReceiver(StripeObject):
-
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     active = models.BooleanField(default=False)
     amount = models.DecimalField(decimal_places=2, max_digits=9)
@@ -356,7 +374,6 @@ class BitcoinReceiver(StripeObject):
 
 
 class Subscription(StripeAccountFromCustomerMixin, StripeObject):
-
     STATUS_CURRENT = ["trialing", "active"]
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
@@ -373,43 +390,50 @@ class Subscription(StripeAccountFromCustomerMixin, StripeObject):
     trial_end = models.DateTimeField(null=True, blank=True)
     trial_start = models.DateTimeField(null=True, blank=True)
 
-    @property
-    def stripe_subscription(self):
-        return stripe.Subscription.retrieve(self.stripe_id, stripe_account=self.stripe_account_stripe_id)
+    # @property
+    # def stripe_subscription(self):
+    #     return stripe.Subscription.retrieve(self.stripe_id, stripe_account=self.stripe_account_stripe_id)
+    #
+    # @property
+    # def total_amount(self):
+    #     return self.plan.amount * self.quantity
+    #
+    # def plan_display(self):
+    #     return self.plan.name
+    #
+    # def status_display(self):
+    #     return self.status.replace("_", " ").title()
+    #
+    # def delete(self, using=None):
+    #     """
+    #     Set values to None while deleting the object so that any lingering
+    #     references will not show previous values (such as when an Event
+    #     signal is triggered after a subscription has been deleted)
+    #     """
+    #     super(Subscription, self).delete(using=using)
+    #     self.status = None
+    #     self.quantity = 0
+    #     self.amount = 0
+    #
+    # def __repr__(self):
+    #     return "Subscription(pk={!r}, customer={!r}, plan={!r}, status={!r}, stripe_id={!r})".format(
+    #         self.pk,
+    #         getattr(self, "customer", None),
+    #         getattr(self, "plan", None),
+    #         self.status,
+    #         self.stripe_id,
+    #     )
+    #
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Subscription, self).delete(*args, **kwargs)
 
-    @property
-    def total_amount(self):
-        return self.plan.amount * self.quantity
-
-    def plan_display(self):
-        return self.plan.name
-
-    def status_display(self):
-        return self.status.replace("_", " ").title()
-
-    def delete(self, using=None):
-        """
-        Set values to None while deleting the object so that any lingering
-        references will not show previous values (such as when an Event
-        signal is triggered after a subscription has been deleted)
-        """
-        super(Subscription, self).delete(using=using)
-        self.status = None
-        self.quantity = 0
-        self.amount = 0
-
-    def __repr__(self):
-        return "Subscription(pk={!r}, customer={!r}, plan={!r}, status={!r}, stripe_id={!r})".format(
-            self.pk,
-            getattr(self, "customer", None),
-            getattr(self, "plan", None),
-            self.status,
-            self.stripe_id,
-        )
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Subscription, self).save(*args, **kwargs)
 
 
 class Invoice(StripeAccountFromCustomerMixin, StripeObject):
-
     customer = models.ForeignKey(Customer, related_name="invoices", on_delete=models.CASCADE)
     amount_due = models.DecimalField(decimal_places=2, max_digits=9)
     attempted = models.NullBooleanField()
@@ -442,9 +466,16 @@ class Invoice(StripeAccountFromCustomerMixin, StripeObject):
             stripe_account=self.stripe_account_stripe_id,
         )
 
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Invoice, self).delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Invoice, self).save(*args, **kwargs)
+
 
 class InvoiceItem(models.Model):
-
     stripe_id = models.CharField(max_length=255)
     created_at = models.DateTimeField(default=timezone.now)
     invoice = models.ForeignKey(Invoice, related_name="items", on_delete=models.CASCADE)
@@ -465,7 +496,6 @@ class InvoiceItem(models.Model):
 
 
 class Charge(StripeAccountFromCustomerMixin, StripeObject):
-
     customer = models.ForeignKey(Customer, null=True, blank=True, related_name="charges", on_delete=models.CASCADE)
     invoice = models.ForeignKey(Invoice, null=True, blank=True, related_name="charges", on_delete=models.CASCADE)
     source = models.CharField(max_length=100, blank=True)
@@ -526,6 +556,7 @@ class Charge(StripeAccountFromCustomerMixin, StripeObject):
         amount = self.amount if self.amount else 0
         amount_refunded = self.amount_refunded if self.amount_refunded else 0
         return amount - amount_refunded
+
     total_amount.fget.short_description = "Σ amount"
 
     @property
@@ -540,17 +571,25 @@ class Charge(StripeAccountFromCustomerMixin, StripeObject):
     def card(self):
         return Card.objects.filter(stripe_id=self.source).first()
 
+    def delete(self, *args, **kwargs):
+        cache.clear()
+        super(Charge, self).delete(*args, **kwargs)
+
+    def save(self, *args, **kwargs):
+        cache.clear()
+        super(Charge, self).save(*args, **kwargs)
+
 
 @python_2_unicode_compatible
 class Account(StripeObject):
-
     INTERVAL_CHOICES = (
         ("Manual", "manual"),
         ("Daily", "daily"),
         ("Weekly", "weekly"),
         ("Monthly", "monthly"),
     )
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE, related_name="stripe_accounts")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.CASCADE,
+                             related_name="stripe_accounts")
 
     business_name = models.TextField(null=True, blank=True)
     business_url = models.TextField(null=True, blank=True)
@@ -634,7 +673,6 @@ class Account(StripeObject):
 
 
 class BankAccount(StripeObject):
-
     account = models.ForeignKey(Account, related_name="bank_accounts", on_delete=models.CASCADE)
     account_holder_name = models.TextField()
     account_holder_type = models.TextField()
