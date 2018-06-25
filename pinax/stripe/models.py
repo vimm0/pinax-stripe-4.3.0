@@ -4,6 +4,8 @@ from __future__ import unicode_literals
 import decimal
 
 from django.core.cache import cache
+from django.dispatch import receiver
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -108,13 +110,10 @@ class Plan(UniquePerAccountStripeObject):
         #         stripe_account=self.stripe_account_stripe_id,
         #     )
 
-    def delete(self, *args, **kwargs):
-        cache.clear()
-        super(Plan, self).delete(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        cache.clear()
-        super(Plan, self).save(*args, **kwargs)
+    @receiver(post_save, sender=Plan, dispatch_uid="Write issued")
+    @receiver(post_delete, sender=Plan, dispatch_uid="Write issued")
+    def invalidate_cache(sender, instance, **kwargs):
+        cache.delete('plan')
 
 
 @python_2_unicode_compatible
@@ -308,13 +307,10 @@ class Customer(AccountRelatedStripeObject):
         #         )
         #     return "Customer(pk={!r}, stripe_id={!r})".format(self.pk, self.stripe_id)
 
-    def delete(self, *args, **kwargs):
-        cache.clear()
-        super(Customer, self).delete(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        cache.clear()
-        super(Customer, self).save(*args, **kwargs)
+        @receiver(post_save, sender=Customer, dispatch_uid="Write issued")
+        @receiver(post_delete, sender=Customer, dispatch_uid="Write issued")
+        def invalidate_cache(sender, instance, **kwargs):
+            cache.delete('customer')
 
 
 class Card(StripeObject):
@@ -345,13 +341,11 @@ class Card(StripeObject):
             getattr(self, "customer", None),
         )
 
-    def delete(self, *args, **kwargs):
-        cache.clear()
-        super(Card, self).delete(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        cache.clear()
-        super(Card, self).save(*args, **kwargs)
+    @receiver(post_save, sender=Card, dispatch_uid="Write issued")
+    @receiver(post_delete, sender=Card, dispatch_uid="Write issued")
+    def invalidate_cache(sender, instance, **kwargs):
+        print('iam in post hook')
+        cache.delete('card')
 
 
 class BitcoinReceiver(StripeObject):
@@ -415,22 +409,19 @@ class Subscription(StripeAccountFromCustomerMixin, StripeObject):
     #     self.quantity = 0
     #     self.amount = 0
     #
-    # def __repr__(self):
-    #     return "Subscription(pk={!r}, customer={!r}, plan={!r}, status={!r}, stripe_id={!r})".format(
-    #         self.pk,
-    #         getattr(self, "customer", None),
-    #         getattr(self, "plan", None),
-    #         self.status,
-    #         self.stripe_id,
-    #     )
-    #
-    def delete(self, *args, **kwargs):
-        cache.clear()
-        super(Subscription, self).delete(*args, **kwargs)
+    def __repr__(self):
+        return "Subscription(pk={!r}, customer={!r}, plan={!r}, status={!r}, stripe_id={!r})".format(
+            self.pk,
+            getattr(self, "customer", None),
+            getattr(self, "plan", None),
+            self.status,
+            self.stripe_id,
+        )
 
-    def save(self, *args, **kwargs):
-        cache.clear()
-        super(Subscription, self).save(*args, **kwargs)
+    @receiver(post_save, sender=Subscription, dispatch_uid="Write issued")
+    @receiver(post_delete, sender=Subscription, dispatch_uid="Write issued")
+    def invalidate_cache(sender, instance, **kwargs):
+        cache.delete('subscription')
 
 
 class Invoice(StripeAccountFromCustomerMixin, StripeObject):
@@ -466,13 +457,10 @@ class Invoice(StripeAccountFromCustomerMixin, StripeObject):
             stripe_account=self.stripe_account_stripe_id,
         )
 
-    def delete(self, *args, **kwargs):
-        cache.clear()
-        super(Invoice, self).delete(*args, **kwargs)
-
-    def save(self, *args, **kwargs):
-        cache.clear()
-        super(Invoice, self).save(*args, **kwargs)
+    @receiver(post_save, sender=Invoice, dispatch_uid="Write issued")
+    @receiver(post_delete, sender=Invoice, dispatch_uid="Write issued")
+    def invalidate_cache(sender, instance, **kwargs):
+        cache.delete('invoice')
 
 
 class InvoiceItem(models.Model):
