@@ -469,13 +469,14 @@ class UserAccountAdmin(ModelAdmin):
     ]
 
 
-admin.site.register(Account, AccountAdmin)
-admin.site.register(BankAccount, BankAccountAdmin)
-admin.site.register(Charge, ChargeAdmin)
-admin.site.register(Coupon, CouponAdmin)
-admin.site.register(Event, EventAdmin)
-admin.site.register(EventProcessingException, EventProcessingExceptionAdmin)
-admin.site.register(Invoice, InvoiceAdmin)
-admin.site.register(Customer, CustomerAdmin)
-admin.site.register(Plan, PlanAdmin)
-admin.site.register(UserAccount, UserAccountAdmin)
+# admin.site.register(Account, AccountAdmin)
+# admin.site.register(BankAccount, BankAccountAdmin)
+# admin.site.register(Coupon, CouponAdmin)
+# admin.site.register(Invoice, InvoiceAdmin)
+# admin.site.register(UserAccount, UserAccountAdmin)
+# TODO: Fix Admin in jus-backend
+# admin.site.register(Charge, ChargeAdmin)
+# admin.site.register(Event, EventAdmin)
+# admin.site.register(EventProcessingException, EventProcessingExceptionAdmin)
+# admin.site.register(Customer, CustomerAdmin)
+# admin.site.register(Plan, PlanAdmin)
