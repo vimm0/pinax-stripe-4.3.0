@@ -342,8 +342,8 @@ class Card(StripeObject):
             self.pk,
             getattr(self, "customer", None),
         )
-    def __str__(self):
-        return (self.full_name)
+    # def __str__(self):
+    #     return (self.full_name)
 
 @receiver(post_save, sender=Card, dispatch_uid="Write issued")
 @receiver(post_delete, sender=Card, dispatch_uid="Write issued")
